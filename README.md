@@ -43,7 +43,7 @@ Press `Ctrl+Shift+K` (default) to toggle Krisp on/off. You can customize this in
 
 ### Stream Deck
 
-1. Install the [Krisp Toggle Stream Deck Plugin](https://github.com/YourUsername/streamdeck-krisp-toggle)
+1. Install the [Krisp Toggle Stream Deck Plugin](https://github.com/DarkSide1305/streamdeck-krisp-toggle)
 2. Add the Krisp Toggle button to your Stream Deck
 3. Press to toggle Krisp with visual feedback
 
@@ -82,7 +82,7 @@ The native module runs an HTTP server (localhost:37320) that the Stream Deck plu
 ## Development
 ```bash
 # Clone the repository
-git clone https://github.com/YourUsername/vencord-krisp-toggle.git
+git clone https://github.com/DarkSide1305/vencord-krisp-toggle.git
 
 # Copy to Vencord userplugins
 cp -r vencord-krisp-toggle path/to/Vencord/src/userplugins/krispToggle

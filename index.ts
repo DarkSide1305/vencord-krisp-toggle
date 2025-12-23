@@ -27,6 +27,18 @@ const settings = definePluginSettings({
         description: "Enable Stream Deck integration (HTTP server & state file)",
         default: true,
         restartNeeded: true
+    },
+    playSounds: {
+        type: OptionType.BOOLEAN,
+        description: "Play mute/unmute sounds when toggling Krisp",
+        default: true
+    },
+    soundVolume: {
+        type: OptionType.SLIDER,
+        description: "Volume for toggle sounds (0-100%)",
+        default: 50,
+        markers: [0, 25, 50, 75, 100],
+        stickToMarkers: false
     }
 });
 
@@ -56,6 +68,58 @@ function getKrispState(): "Krisp" | "None" | "Standard" | "Transitioning" | "Unk
         console.error("[Krisp Toggle] Error getting state:", error);
     }
     return "Unknown";
+}
+
+// Cache for audio blobs
+let audioCache: Record<string, string> = {};
+
+async function loadSoundAsBlob(url: string): Promise<string> {
+    if (audioCache[url]) {
+        return audioCache[url];
+    }
+    
+    try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        audioCache[url] = blobUrl;
+        return blobUrl;
+    } catch (error) {
+        console.error("[Krisp Toggle] Error loading sound:", error);
+        throw error;
+    }
+}
+
+async function playSound(soundName: string) {
+    if (!settings.store.playSounds) return;
+    
+    try {
+        console.log("[Krisp Toggle] Playing sound:", soundName);
+        
+        // Discord sound URLs - actual Discord sound files from GitHub
+        const soundUrls: Record<string, string> = {
+            "mute": "https://raw.githubusercontent.com/lefuturiste/discord-sounds/master/non-muted.mp3",
+            "unmute": "https://raw.githubusercontent.com/lefuturiste/discord-sounds/master/muted.mp3"
+        };
+        
+        const url = soundUrls[soundName];
+        if (!url) {
+            console.warn("[Krisp Toggle] Unknown sound name:", soundName);
+            return;
+        }
+        
+        // Load sound as blob to bypass CSP
+        const blobUrl = await loadSoundAsBlob(url);
+        
+        const audio = new Audio();
+        audio.src = blobUrl;
+        audio.volume = settings.store.soundVolume / 100; // Convert 0-100 to 0-1
+        audio.play().catch(err => {
+            console.warn("[Krisp Toggle] Could not play audio:", err);
+        });
+    } catch (error) {
+        console.error("[Krisp Toggle] Error playing sound:", error);
+    }
 }
 
 function toggleKrisp() {
@@ -88,24 +152,33 @@ function toggleKrisp() {
             
             // Toggle between Krisp and None
             if (currentMode === "Krisp") {
-                // Switch to None
+                // Switch to None (turning OFF Krisp = "unmuting" noise)
                 console.log("[Krisp Toggle] Switching to None");
                 MediaEngineStore.setNoiseCancellation(false);
                 // Small delay to ensure first call completes
                 setTimeout(() => MediaEngineStore.setNoiseSuppression(false), 10);
                 lastKnownMode = "None";
+                
+                // Play unmute sound (Krisp OFF = more noise allowed)
+                playSound("unmute");
             } else if (currentMode === "Transitioning") {
                 // If transitioning to Krisp, treat it as if already on Krisp and switch to None
                 console.log("[Krisp Toggle] Detected transitioning state, switching to None");
                 MediaEngineStore.setNoiseCancellation(false);
                 setTimeout(() => MediaEngineStore.setNoiseSuppression(false), 10);
                 lastKnownMode = "None";
+                
+                // Play unmute sound
+                playSound("unmute");
             } else {
-                // Switch to Krisp (from None or Standard)
+                // Switch to Krisp (from None or Standard) (turning ON Krisp = "muting" noise)
                 console.log("[Krisp Toggle] Switching to Krisp");
                 MediaEngineStore.setNoiseCancellation(true);
                 setTimeout(() => MediaEngineStore.setNoiseSuppression(true), 10);
                 lastKnownMode = "Krisp";
+                
+                // Play mute sound (Krisp ON = suppressing noise)
+                playSound("mute");
             }
         }
         
@@ -131,11 +204,22 @@ export default definePlugin({
         
         console.log("[Krisp Toggle] Plugin started. Global keybind:", settings.store.keybind);
         console.log("[Krisp Toggle] Stream Deck integration:", settings.store.enableStreamDeck ? "enabled" : "disabled");
+        console.log("[Krisp Toggle] Sound effects:", settings.store.playSounds ? "enabled" : "disabled");
         console.log("[Krisp Toggle] HTTP API available on window.VencordKrispToggle");
     },
     
     stop() {
-        // Clean up
+        // Clean up blob URLs
+        Object.values(audioCache).forEach(url => {
+            try {
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                // Ignore errors
+            }
+        });
+        audioCache = {};
+        
+        // Clean up global object
         delete (window as any).VencordKrispToggle;
         console.log("[Krisp Toggle] Plugin stopped");
     }
